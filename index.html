@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Открытка</title>
+<title>Открытка Максимке</title>
 <style>
 html,body{
   margin:0;
@@ -22,14 +22,6 @@ body{
   user-select:none;
   font-family:Arial,sans-serif;
   position:relative;
-}
-
-#floatLayer{
-  position:fixed;
-  inset:0;
-  pointer-events:none;
-  overflow:hidden;
-  z-index:9999;
 }
 
 #wrap{
@@ -222,36 +214,9 @@ body{
 #voice{
   display:none;
 }
-
-.float-item{
-  position:fixed;
-  left:0;
-  top:0;
-  border-radius:18px;
-  opacity:0;
-  transform:translate(0, 0) scale(0.92);
-  transition:
-    transform 12s linear,
-    opacity 2s ease-in-out;
-  will-change:transform, opacity;
-  z-index:10000;
-  box-shadow:0 14px 40px rgba(0,0,0,.32);
-  overflow:hidden;
-  font-family:Arial,sans-serif;
-  display:block;
-  object-fit:contain;
-  background:#000;
-}
-
-.float-item.video{
-  background:#000;
-  outline:1px solid rgba(255,255,255,.06);
-}
 </style>
 </head>
 <body>
-
-<div id="floatLayer"></div>
 
 <div id="wrap">
   <div id="playerShell">
@@ -270,9 +235,6 @@ body{
 const knob = document.getElementById('knob');
 const record = document.getElementById('record');
 const voice = document.getElementById('voice');
-const floatLayer = document.getElementById('floatLayer');
-const playerShell = document.getElementById('playerShell');
-const wrap = document.getElementById('wrap');
 
 let dragging = false;
 let lastAngle = 0;
@@ -280,38 +242,6 @@ let rotation = 0;
 let started = false;
 let stopTimer = null;
 let speedSmooth = 0;
-let floatCooldown = 0;
-let mediaCursor = 0;
-let burstTimer = null;
-let burstEndAt = 0;
-let burstStarted = false;
-
-const BURST_MS = 90_000;
-const BURST_INTERVAL_MS = 650;
-
-const mediaPool = [
-  { src: '2_5357332348633383173_1.mp4', type: 'video' },
-  { src: '20241110_201422.jpg', type: 'image' },
-  { src: '20241221_182206.jpg', type: 'image' },
-  { src: '20241222_022742.mp4', type: 'video' },
-  { src: '20250323_155013.png', type: 'image' },
-  { src: '20250703_204505.jpg', type: 'image' },
-  { src: '20250819_180033.jpg', type: 'image' },
-  { src: '20260519_183549.mp4', type: 'video' },
-  { src: 'IMG_20250309_012330_472.jpg', type: 'image' },
-  { src: 'IMG_20250429_014246_344.jpg', type: 'image' },
-  { src: 'IMG_20251026_213234_852.jpg', type: 'image' },
-  { src: 'IMG_20260122_164139_247.jpg', type: 'image' },
-  { src: 'TBcLekUZXTIkRP7XpnZV1_7aTaBoj1V5Fa1bisdLGZA_CDzFPIC8T04Cowry1wM.jpg', type: 'image' },
-  { src: 'VideoCapture_20241125-110959.jpg', type: 'image' },
-  { src: 'VideoCapture_20250105-045240.jpg', type: 'image' },
-  { src: 'VideoCapture_20250702-120213.jpg', type: 'image' },
-  { src: 'video (6).mp4', type: 'video' },
-  { src: 'Screen_Recording_20250128_050644_Chrome.mp4', type: 'video' }
-];
-
-const activeItems = [];
-const MAX_VISIBLE_ITEMS = 6;
 
 function centerOf(el) {
   const r = el.getBoundingClientRect();
@@ -333,10 +263,6 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function rand(min, max) {
-  return min + Math.random() * (max - min);
-}
-
 async function ensurePlaying() {
   if (!started || voice.paused) {
     started = true;
@@ -356,146 +282,10 @@ function scheduleStop() {
   }, 60);
 }
 
-function cleanupActiveItems() {
-  const now = performance.now();
-  for (let i = activeItems.length - 1; i >= 0; i--) {
-    if (now > activeItems[i].until) activeItems.splice(i, 1);
-  }
-}
-
-function isFreeSpot(x, y, w, h) {
-  cleanupActiveItems();
-  const cx = x + w / 2;
-  const cy = y + h / 2;
-
-  for (const item of activeItems) {
-    const dx = cx - item.cx;
-    const dy = cy - item.cy;
-    const dist = Math.hypot(dx, dy);
-    const minDist = (Math.max(w, h) + item.size) * 0.70;
-    if (dist < minDist) return false;
-  }
-  return true;
-}
-
-function sideSpots(mediaW, mediaH) {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const shell = playerShell.getBoundingClientRect();
-  const gap = 18;
-  const pad = 22;
-  const topMin = clamp(shell.top + 8, pad, vh - mediaH - pad);
-  const topMax = clamp(shell.bottom - mediaH - 8, pad, vh - mediaH - pad);
-  const y = clamp(rand(topMin, topMax), pad, Math.max(pad, vh - mediaH - pad));
-
-  const leftMinX = pad;
-  const leftMaxX = Math.max(pad, shell.left - mediaW - gap);
-  const rightMinX = Math.min(vw - mediaW - pad, shell.right + gap);
-  const rightMaxX = Math.max(rightMinX, vw - mediaW - pad);
-
-  const side = Math.random() < 0.5 ? 'left' : 'right';
-  const x = side === 'left'
-    ? clamp(rand(leftMinX, leftMaxX), pad, Math.max(pad, leftMaxX))
-    : clamp(rand(rightMinX, rightMaxX), rightMinX, rightMaxX);
-
-  return { x, y };
-}
-
-function nextMedia() {
-  const item = mediaPool[mediaCursor];
-  mediaCursor = (mediaCursor + 1) % mediaPool.length;
-  return item;
-}
-
-function spawnFloatingMedia() {
-  cleanupActiveItems();
-  if (activeItems.length >= MAX_VISIBLE_ITEMS) return;
-
-  const pick = nextMedia();
-  if (!pick || !pick.src) return;
-
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const base = Math.min(vw, vh) * 0.22;
-  const mediaW = clamp(base + rand(40, 150), 180, 340);
-  const mediaH = clamp(mediaW * rand(0.68, 0.88), 150, 300);
-  const start = sideSpots(mediaW, mediaH);
-
-  const end = sideSpots(mediaW, mediaH);
-  const isVideo = pick.type === 'video';
-  const el = document.createElement(isVideo ? 'video' : 'img');
-  el.className = 'float-item' + (isVideo ? ' video' : '');
-  el.src = pick.src;
-  el.style.width = `${mediaW}px`;
-  el.style.height = `${mediaH}px`;
-  el.style.left = `${start.x}px`;
-  el.style.top = `${start.y}px`;
-  el.style.zIndex = '10000';
-  el.style.objectFit = 'cover';
-
-  if (isVideo) {
-    el.muted = true;
-    el.loop = true;
-    el.playsInline = true;
-    el.autoplay = true;
-    el.preload = 'auto';
-  }
-
-  const travelX = end.x - start.x;
-  const travelY = end.y - start.y;
-  const scale = 0.98 + Math.random() * 0.14;
-  const duration = 7000 + Math.random() * 3000;
-
-  el.style.transition = `transform ${duration}ms linear, opacity 1800ms ease-in-out`;
-  floatLayer.appendChild(el);
-
-  if (isVideo) {
-    el.play().catch(() => {});
-  }
-
-  activeItems.push({
-    cx: start.x + mediaW / 2,
-    cy: start.y + mediaH / 2,
-    size: Math.max(mediaW, mediaH),
-    until: performance.now() + duration + 500
-  });
-
-  requestAnimationFrame(() => {
-    el.style.opacity = '1';
-    el.style.transform = `translate(${travelX}px, ${travelY}px) scale(${scale})`;
-  });
-
-  setTimeout(() => {
-    el.style.opacity = '0';
-  }, duration - 1800);
-
-  setTimeout(() => {
-    el.remove();
-  }, duration + 120);
-}
-
-function startBurst() {
-  if (burstStarted) return;
-  burstStarted = true;
-  burstEndAt = performance.now() + BURST_MS;
-
-  spawnFloatingMedia();
-  burstTimer = setInterval(() => {
-    if (performance.now() >= burstEndAt) {
-      clearInterval(burstTimer);
-      burstTimer = null;
-      burstStarted = false;
-      return;
-    }
-    spawnFloatingMedia();
-  }, BURST_INTERVAL_MS);
-}
-
 knob.addEventListener('pointerdown', e => {
   dragging = true;
   lastAngle = angleFromCenter(e, knob);
   knob.setPointerCapture(e.pointerId);
-  startBurst();
 });
 
 knob.addEventListener('pointermove', async e => {
@@ -529,7 +319,6 @@ function stop() {
   voice.playbackRate = 1;
   started = false;
   speedSmooth = 0;
-  floatCooldown = 0;
 }
 
 knob.addEventListener('pointerup', stop);
@@ -538,3 +327,5 @@ knob.addEventListener('pointercancel', stop);
 
 </body>
 </html>
+
+
